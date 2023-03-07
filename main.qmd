@@ -1,0 +1,112 @@
+---
+title: "Bioluminescence Trigger Rate"
+format:
+  html:
+    code-fold: true
+jupyter: julia-1.9
+---
+
+```{julia}
+#| echo: false
+#| output: false
+using NeutrinoTelescopes
+using CairoMakie
+using JSON
+
+pkg_dir = dirname(pathof(NeutrinoTelescopes))
+```
+
+This document summarizes the study on the expected local coincidence (LC) trigger rate in the 16PMT POM due to bioluminescense (BL).
+
+# Assumptions
+BL emission from an individual organism is assumed to be pointlike, isotropic and monochromatic (420nm). The emission positions are distributed according to the [Fourth-Day](https://github.com/MeighenBergerS/fourth_day) model, which assumes that BL is caused mainly by turbulence-induced shear forces. The positions available for sampling are shown in fig. @fig-fd-empos .
+As BL emission is biological, we assume that the time emission profile is uniform on the time scales considered for this study.
+
+```{julia}
+#| echo: false
+#| label: fig-fd-empos
+#| fig-cap: "Fourth Day Emission Positions"
+#| column: margin
+bio_pos_df = Vector{Float64}.(JSON.parsefile(joinpath(pkg_dir, "../assets/relative_emission_positions.json")))
+
+scatter(
+    reduce(hcat, [pos[1:2] for pos in bio_pos_df]),
+    axis=(; xlabel="x (m)", ylabel="y (m)"))
+
+```
+
+# Photon Propagation Setup
+Source positions are drawn from the Fourth-Day positional distribution. At each position, a monochromatic, isotropic emitter is placed. A fixed number of photons is emitted uniformely over a time range of $10^7$ns.
+A P-OM receiver is placed at $(0, 0, 0)$. 
+For each simulation run, a fixed number $N$ of emitters is drawn, each emitting $10^9/N$ photons.
+Photons are propagated with the [PhotonPropagation.jl](https://github.com/PLEnuM-group/PhotonPropagation.jl) package, using the standard optical properties for Cascadia Basin.
+
+After propagation, photons are attributed to the indivdual PMTs and are resampled according to their total weight (includes absorption in water and quantum efficiency). 
+
+In order to calculated the expected PMT rate in STRAW for each emitter configuration, an additional simulation is run, where the receiver is replaced by a single, upwards-facing PMT.
+
+::: {.callout-note}
+Angular acceptance is currently *not* taken into account (ie FOV is $180^\circ$).
+:::
+
+# Trigger Logic
+A local-coindince trigger algorithm is run on all hits from each simulation run.
+The algorithm is implemented as follows:
+
+```julia
+"""
+    lc_trigger(sorted_hits::AbstractDataFrame, time_window)
+
+Calculate local-coincidence triggers for `sorted_hits` in `time_window`.
+
+The algorithm loops through all hits ``h_i``. When the next hit ``h_j`` is closer than the
+time window ``\\delta`` a new trigger is started. The trigger will accumulate all hits
+``h_j`` that are within ``h_i + \\delta``. Finally, a trigger is emitted when it includes
+hits on at least two different PMTs.
+
+Returns a Vector of hit-time vectors.
+"""
+function lc_trigger(sorted_hits::AbstractDataFrame, time_window)
+
+    triggers = []
+    i = 1
+    while i < nrow(sorted_hits)
+
+        lc_flag = false
+
+        j = i + 1
+        while j <= nrow(sorted_hits)
+            if (sorted_hits[j, :time] - sorted_hits[i, :time]) <= time_window
+                lc_flag = true
+            else
+                break
+            end
+            j += 1
+        end
+
+        if !lc_flag
+            i = j
+            continue
+        end
+
+        if length(unique(sorted_hits[i:(j-1), :pmt_id])) >= 2
+            push!(triggers, sorted_hits[i:(j-1), :])
+        end
+
+        i = j
+    end
+    return triggers
+end
+```
+The LC trigger is run for different time-windows: 10ns, 15ns, 20ns and 30ns.
+
+# Simulation Runs
+Simulation runs are performed for different numbers of BL emitters. For each run, a new set of BL emission positions is drawn.
+LC triggers are calculated per run. The result is grouped by the coincidence level (ie. the number of unique PMTs with at least one hit).
+The LC trigger rate is the calculated as:
+$$
+R_k = N_k \cdot \frac{n_{\text{sim}} \cdot 10^7 }{10^9} ,
+$$
+where $N_k$ is the number of triggers at LC level $k$, $n_{\text{sim}}$ is the number of simulation runs for a given BL emitter number, and $10^7$ is the emission time window.
+
+
