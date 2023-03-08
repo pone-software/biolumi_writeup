@@ -1,0 +1,112 @@
+<p>This document summarizes the study on the expected local coincidence (LC) trigger rate in the 16PMT POM due to bioluminescense (BL).</p>
+<h1 id="assumptions">Assumptions<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">assumptions</ac:parameter></ac:structured-macro></h1>
+<p>BL emission from an individual organism is assumed to be pointlike, isotropic and monochromatic (420nm). The emission positions are distributed according to the <a href='https://github.com/MeighenBergerS/fourth_day' title=''>Fourth-Day</a> model, which assumes that BL is caused mainly by turbulence-induced shear forces. The positions available for sampling are shown in <a href='#fig-fd-empos' title=''>Figure 1</a> . As BL emission is biological, we assume that the time emission profile is uniform on the time scales considered for this study.</p>
+<div class="cell" data-execution_count="3">
+<div class="cell-output cell-output-display column-margin" data-execution_count="17">
+<p><p><ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">fig-fd-empos</ac:parameter></ac:structured-macro></p><ac:image
+    ac:align="center"
+    ac:layout="center"
+    ac:alt="">
+        <ri:attachment ri:filename="main_files/figure-publish/fig-fd-empos-output-1.png" /><ac:caption>Figure 1: Fourth Day Emission Positions</ac:caption>
+    </ac:image></p>
+</div>
+</div>
+<h1 id="probabilistic-model">Probabilistic Model<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">probabilistic-model</ac:parameter></ac:structured-macro></h1>
+<p>Assuming that the detected photons are independent and that each PMT sees the same rate, we can model the coincidences with a binomial distribution. The success rate is given by the time window size <span class="math inline"><em>T</em></span> and the single-pmt rate <span class="math inline"><em>R</em></span>. We then ask for the probability of observing <span class="math inline"><em>n</em><sub>hit</sub></span> in a given time window: <span class="math display">$$
+\begin{align*}
+T &amp;= 20~\mathrm{ns} \\
+R &amp;= 10^5~\mathrm{Hz} \\
+p_{\text{hit}} &amp;= R \cdot \frac{tw}{10^9~ \mathrm{ns/s}} \\
+n_{\text{hit}} &amp;\sim \text{Binom}(n=16, p=p_{\text{hit}})
+\end{align*}
+$$</span></p>
+<ac:structured-macro ac:name="info" ac:schema-version="1" ac:macro-id="1c8062cd-87de-4701-a698-fd435e057468"><ac:rich-text-body><p>This assumes that all PMTs see the <em>same</em> rate. Additionally,
+we only consider each PMT once per time-window. This is valid, as long
+as the success probability is small (small time windows).</p></ac:rich-text-body></ac:structured-macro>
+<p><a href='#fig-prob-lc' title=''>Figure 2</a> shows the expected LC rates using the Binomial model.</p>
+<div class="cell" data-execution_count="4">
+<div class="cell-output cell-output-display" data-execution_count="18">
+<p><p><ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">fig-prob-lc</ac:parameter></ac:structured-macro></p><ac:image
+    ac:align="center"
+    ac:layout="center"
+    ac:alt="">
+        <ri:attachment ri:filename="main_files/figure-publish/fig-prob-lc-output-1.png" /><ac:caption>Figure 2: Local coincidence rates from Binomial model</ac:caption>
+    </ac:image></p>
+</div>
+</div>
+<h1 id="photon-propagation-setup">Photon Propagation Setup<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">photon-propagation-setup</ac:parameter></ac:structured-macro></h1>
+<p>Source positions are drawn from the Fourth-Day positional distribution. At each position, a monochromatic, isotropic emitter is placed. A fixed number of photons is emitted uniformely over a time range of <span class="math inline">10<sup>7</sup></span>ns. A P-OM receiver is placed at <span class="math inline">(0,0,0)</span>. For each simulation run, a fixed number <span class="math inline"><em>N</em></span> of emitters is drawn, each emitting <span class="math inline">10<sup>9</sup>/<em>N</em></span> photons. Photons are propagated with the <a href='https://github.com/PLEnuM-group/PhotonPropagation.jl' title=''>PhotonPropagation.jl</a> package, using the standard optical properties for Cascadia Basin.</p>
+<p>After propagation, photons are attributed to the indivdual PMTs and are resampled according to their total weight (includes absorption in water and quantum efficiency).</p>
+<p>In order to calculated the expected PMT rate in STRAW for each emitter configuration, an additional simulation is run, where the receiver is replaced by a single, upwards-facing PMT.</p>
+<ac:structured-macro ac:name="info" ac:schema-version="1" ac:macro-id="1c8062cd-87de-4701-a698-fd435e057468"><ac:rich-text-body><p>Angular acceptance is currently <em>not</em> taken into account (ie
+FOV is <span class="math inline">180<sup>∘</sup></span>).</p></ac:rich-text-body></ac:structured-macro>
+<h1 id="trigger-logic">Trigger Logic<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">trigger-logic</ac:parameter></ac:structured-macro></h1>
+<p>A local-coindince trigger algorithm is run on all hits from each simulation run. The algorithm is implemented as follows:</p>
+<ac:structured-macro
+      ac:name="code"
+      ac:schema-version="1"
+      ac:macro-id="1d1a2d13-0179-4d8f-b448-b28dfaceea4a">
+        <ac:parameter ac:name="language">julia</ac:parameter>
+        <ac:plain-text-body>
+          <![CDATA["""
+    lc_trigger(sorted_hits::AbstractDataFrame, time_window)
+
+Calculate local-coincidence triggers for `sorted_hits` in `time_window`.
+
+The algorithm loops through all hits ``h_i``. When the next hit ``h_j`` is closer than the
+time window ``\\delta`` a new trigger is started. The trigger will accumulate all hits
+``h_j`` that are within ``h_i + \\delta``. Finally, a trigger is emitted when it includes
+hits on at least two different PMTs.
+
+Returns a Vector of hit-time vectors.
+"""
+function lc_trigger(sorted_hits::AbstractDataFrame, time_window)
+
+    triggers = []
+    i = 1
+    while i < nrow(sorted_hits)
+
+        lc_flag = false
+
+        j = i + 1
+        while j <= nrow(sorted_hits)
+            if (sorted_hits[j, :time] - sorted_hits[i, :time]) <= time_window
+                lc_flag = true
+            else
+                break
+            end
+            j += 1
+        end
+
+        if !lc_flag
+            i = j
+            continue
+        end
+
+        if length(unique(sorted_hits[i:(j-1), :pmt_id])) >= 2
+            push!(triggers, sorted_hits[i:(j-1), :])
+        end
+
+        i = j
+    end
+    return triggers
+end]]>
+        </ac:plain-text-body>
+    </ac:structured-macro>
+<p>The LC trigger is run for different time-windows: 10ns, 15ns, 20ns and 30ns.</p>
+<h1 id="simulation-runs">Simulation Runs<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">simulation-runs</ac:parameter></ac:structured-macro></h1>
+<p>Simulation runs are performed for different numbers of BL emitters. For each run, a new set of BL emission positions is drawn. LC triggers are calculated per run. The result is grouped by the coincidence level (ie. the number of unique PMTs with at least one hit). The LC trigger rate is the calculated as: <span class="math display">$$
+R_k = N_k \cdot \frac{n_{\text{sim}} \cdot 10^7 }{10^9} ,
+$$</span> where <span class="math inline"><em>N</em><sub><em>k</em></sub></span> is the number of triggers at LC level <span class="math inline"><em>k</em></span>, <span class="math inline"><em>n</em><sub>sim</sub></span> is the number of simulation runs for a given BL emitter number, and <span class="math inline">10<sup>7</sup></span> is the emission time window.</p>
+<h1 id="result">Result<ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">result</ac:parameter></ac:structured-macro></h1>
+<p><a href='#fig-sim-lc' title=''>Figure 3</a> shows a summary of the simulations. Based on the STRAW rates we expect up to 30kHz (40kHz) of triggers at LC2 for time windows of 10ns (20ns). The Binomial model works reasonable well for small time windows, but underpredicts the expected LC rates by up to an order of magnitude for larger time windows.</p>
+<div class="cell" data-execution_count="6">
+<div class="cell-output cell-output-display" data-execution_count="20">
+<p><p><ac:structured-macro ac:name="anchor" ac:schema-version="1" ac:local-id="a6aa6f25-0bee-4a7f-929b-71fcb7eba592" ac:macro-id="d2cb5be1217ae6e086bc60005e9d27b7"><ac:parameter ac:name="">fig-sim-lc</ac:parameter></ac:structured-macro></p><ac:image
+    ac:align="center"
+    ac:layout="center"
+    ac:alt="">
+        <ri:attachment ri:filename="main_files/figure-publish/fig-sim-lc-output-1.png" /><ac:caption>Figure 3: Simulated local coincidence rates for 10ns (left) and 20ns (right) time windows. The black lines shows the STRAW rate fraction above a given rate. The solid, colored lines show the coincidence rates expected from the binomial model.</ac:caption>
+    </ac:image></p>
+</div>
+</div>

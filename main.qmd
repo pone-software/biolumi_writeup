@@ -1,9 +1,11 @@
 ---
 title: "Bioluminescence Trigger Rate"
-format:
-  html:
+format: confluence-html
+html:
     code-fold: true
 jupyter: julia-1.9
+execute: 
+  cache: true
 ---
 
 ```{julia}
@@ -12,6 +14,15 @@ jupyter: julia-1.9
 using NeutrinoTelescopes
 using CairoMakie
 using JSON
+using Distributions
+using Arrow
+using Glob
+using DataFrames
+using Random
+using Parquet2
+using CSV
+using StatsBase
+using Format
 
 pkg_dir = dirname(pathof(NeutrinoTelescopes))
 ```
@@ -19,7 +30,7 @@ pkg_dir = dirname(pathof(NeutrinoTelescopes))
 This document summarizes the study on the expected local coincidence (LC) trigger rate in the 16PMT POM due to bioluminescense (BL).
 
 # Assumptions
-BL emission from an individual organism is assumed to be pointlike, isotropic and monochromatic (420nm). The emission positions are distributed according to the [Fourth-Day](https://github.com/MeighenBergerS/fourth_day) model, which assumes that BL is caused mainly by turbulence-induced shear forces. The positions available for sampling are shown in fig. @fig-fd-empos .
+BL emission from an individual organism is assumed to be pointlike, isotropic and monochromatic (420nm). The emission positions are distributed according to the [Fourth-Day](https://github.com/MeighenBergerS/fourth_day) model, which assumes that BL is caused mainly by turbulence-induced shear forces. The positions available for sampling are shown in @fig-fd-empos .
 As BL emission is biological, we assume that the time emission profile is uniform on the time scales considered for this study.
 
 ```{julia}
@@ -33,6 +44,49 @@ scatter(
     reduce(hcat, [pos[1:2] for pos in bio_pos_df]),
     axis=(; xlabel="x (m)", ylabel="y (m)"))
 
+```
+
+# Probabilistic Model
+Assuming that the detected photons are independent and that each PMT sees the same rate, we can model the coincidences with a binomial distribution. The success rate is given by the time window size $T$ and the single-pmt rate $R$. We then ask for the probability of observing $n_{\text{hit}}$ in a given time window:
+$$
+\begin{align*}
+T &= 20~\mathrm{ns} \\
+R &= 10^5~\mathrm{Hz} \\
+p_{\text{hit}} &= R \cdot \frac{tw}{10^9~ \mathrm{ns/s}} \\
+n_{\text{hit}} &\sim \text{Binom}(n=16, p=p_{\text{hit}})
+\end{align*}
+$$
+
+::: {.callout-note}
+This assumes that all PMTs see the *same* rate. Additionally, we only consider each PMT once per time-window. This is valid, as long as the success probability is small (small time windows).
+:::
+
+@fig-prob-lc shows the expected LC rates using the Binomial model.
+```{julia}
+#| label: fig-prob-lc
+#| echo: false
+#| fig-cap: "Local coincidence rates from Binomial model"
+function lc_rate(single_pmt_rate, tw_size, lc_level)
+    p_success = single_pmt_rate / 1E9 * tw_size
+    n_windows = 1E9 / tw_size
+    d = Binomial(16, p_success)
+    return n_windows*pdf(d, lc_level)
+end
+
+lc_levels = 2:6
+single_pmt_rates = 10 .^(2:0.1:6)
+tw_size = 20 # ns
+
+fig = Figure()
+ax = Axis(fig[1,1], xscale=log10, yscale=log10, limits=(1E3, 1E6, 1, 1E6),
+          xlabel="Single PMT Rate (Hz)", ylabel="LC Rate (Hz)",
+          yminorticksvisible=true,
+          yminorgridvisible=true)
+for lc_level in lc_levels
+    lines!(ax, single_pmt_rates, lc_rate.(single_pmt_rates, tw_size,lc_level), label="LC $lc_level")
+end
+l = Legend(fig[1, 2], ax)
+fig
 ```
 
 # Photon Propagation Setup
@@ -108,5 +162,107 @@ $$
 R_k = N_k \cdot \frac{n_{\text{sim}} \cdot 10^7 }{10^9} ,
 $$
 where $N_k$ is the number of triggers at LC level $k$, $n_{\text{sim}}$ is the number of simulation runs for a given BL emitter number, and $10^7$ is the emission time window.
+
+# Result
+@fig-sim-lc shows a summary of the simulations. Based on the STRAW rates we expect up to 30kHz (40kHz) of triggers at LC2 for time windows of 10ns (20ns). The Binomial model works reasonable well for small time windows, but underpredicts the expected LC rates by up to an order of magnitude for larger time windows.
+```{julia}
+#| echo: false
+#| output: false
+function make_all_coinc_rate_plot(ax, results_df, trange=1E7, lc_range=2:6)
+
+    grouped_n_src = groupby(results_df, :n_sources)
+
+    for (j, result_df) in enumerate(grouped_n_src)
+
+        grouped_ds = groupby(result_df, :ds_rate)
+        coinc_trigger = combine(grouped_ds, All() .=> mean)
+       
+        for (i, lc_level) in enumerate(lc_range)
+            col_sym = Symbol(format("lc_{:d}_mean", lc_level))
+
+            lines!(
+                ax,
+                coinc_trigger[:, :hit_rate_1pmt_mean],
+                coinc_trigger[:, col_sym] .* (1E9 ./ trange),
+                label=string(lc_level),
+                linestyle=Cycled(j),
+                color=Cycled(i)
+            )
+
+        end
+    end
+
+end
+
+results = DataFrame(Parquet2.readfile(joinpath(pkg_dir, "../data/biolumi_lc_proc.parquet")))
+```
+
+
+```{julia}
+#| echo: false
+#| label: fig-sim-lc
+#| fig-cap: Simulated local coincidence rates for 10ns (left) and 20ns (right) time windows. The black lines shows the STRAW rate fraction above a given rate. The solid, colored lines show the coincidence rates expected from the binomial model.
+lc_range = 2:6
+sources_labels =  string.(getproperty.(keys(groupby(results, :n_sources)), :n_sources))
+straw_cum_rates = CSV.read(joinpath(pkg_dir, "../assets/straw_cumulative_rates.csv"), DataFrame, header=[:rate, :frac_above])
+
+linestyles = ["-", ".", "-.", "-..", "-..."]
+
+theme = Theme(
+    palette=(color=Makie.wong_colors(), linestyle=linestyles),
+    Lines=(cycle=Cycle([:color, :linestyle], covary=true),)
+)
+
+set_theme!(theme)
+
+
+fig = Figure(resolution=(1200, 600))
+for (i, tw) in enumerate([10, 20])
+    mask = results[:, :time_window] .== tw .&& results[:, :n_sources] .> 10
+    subsel = results[mask, :]
+   
+    ax = Axis(fig[1, i],
+        yscale=log10, xscale=log10,
+        limits=(1E3, 1E6, 10, 1E6),
+        xlabel="Single PMT Rate (Hz)",
+        ylabel="LC Rate (Hz)",
+        yminorticks=IntervalsBetween(8),
+        yminorticksvisible=true,
+        yminorgridvisible=true,
+        title="LC Window: $tw ns")
+
+    ax2 = Axis(fig[1, i],
+        backgroundcolor = :transparent,
+        yaxisposition=:right,
+        ylabel="Straw Rate Fraction Above",
+        yminorticksvisible=true,
+        xscale=log10)
+    hidexdecorations!(ax2)
+    hidespines!(ax2)
+    xlims!(ax2, 1E3, 1E6)
+    ylims!(ax2, 0, 1)
+    make_all_coinc_rate_plot(ax, subsel, 1E7, lc_range)
+    for (lc_level, col) in zip(lc_range, Makie.wong_colors())
+        lines!(ax, single_pmt_rates, lc_rate.(single_pmt_rates, tw_size, lc_level), color=col)
+    end
+    
+    lines!(ax2, straw_cum_rates[:, :rate], straw_cum_rates[:, :frac_above], color=:black)
+end
+group_color = [
+    LineElement(linestyle=:solid, color=col) for col in Makie.wong_colors()[1:length(lc_range)]
+]
+
+group_linestyle = vcat([LineElement(linestyle=:solid, color=:black)], [LineElement(linestyle=ls, color=:black) for ls in linestyles])
+
+group_prob_model = [LineElement(linestyle=:solid, color=:black)]
+legend = Legend(
+    fig,
+    [group_color, group_linestyle, ],
+    [string.(lc_range), vcat(["Binom. Model"], sources_labels)],
+    ["LC Level", "N-Sources"])
+
+fig[1, 3] = legend
+fig
+```
 
 
