@@ -67,10 +67,17 @@ This assumes that all PMTs see the *same* rate. Additionally, we only consider e
 #| echo: false
 #| fig-cap: "Local coincidence rates from Binomial model"
 function lc_rate(single_pmt_rate, tw_size, lc_level)
-    p_success = single_pmt_rate / 1E9 * tw_size
+        
+    rate_in_tw = single_pmt_rate / 1E9 * tw_size
+
+    p = Poisson(rate_in_tw)
+    p_success = cdf(1)
+
     n_windows = 1E9 / tw_size
     d = Binomial(16, p_success)
-    return n_windows*pdf(d, lc_level)
+    binomial_prob = pdf(d, lc_level)
+
+    return n_windows*binomial_prob
 end
 
 lc_levels = 2:6
